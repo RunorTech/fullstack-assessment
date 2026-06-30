@@ -5,6 +5,10 @@ const paymentGateway = require("./paymentGateway");
 const redis = require("../db/redis");
 const db = require("../db/postgres");
 
+// Helper transaction wrapper to acquire a connection from the PG pool,
+// execute a callback inside a BEGIN/COMMIT block, and ROLLBACK in case of error.
+// The transaction client is passed to the repositories to ensure all queries
+// are executed inside the same atomic database transaction.
 async function withTransaction(callback) {
   const client = await db.connect();
   try {
@@ -27,41 +31,60 @@ async function createOrder({ customerId, items, totalAmount }) {
     throw error;
   }
 
-  const enrichedItems = [];
-  for (const item of items) {
-    const product = await productsRepository.getProductById(item.productId);
-    if (!product) {
-      const error = new Error(`Product ${item.productId} not found`);
-      error.status = 404;
-      throw error;
-    }
-    if (product.stock < item.quantity) {
-      const error = new Error(`Insufficient stock for ${product.name}`);
-      error.status = 409;
-      throw error;
-    }
-    enrichedItems.push({
-      productId: product.id,
-      quantity: item.quantity,
-      unitPrice: Number(product.price),
-    });
-  }
+  // CRITICAL CONCURRENCY SAFEGUARD:
+  // Sort the requested order items by productId in ascending order.
+  // This guarantees that all concurrent transactions acquire row locks in the exact same
+  // sequence, preventing database deadlocks where transaction A locks product 1 and waits for 2,
+  // while transaction B locks product 2 and waits for 1.
+  const sortedItems = [...items].sort((a, b) => Number(a.productId) - Number(b.productId));
 
-  for (const item of enrichedItems) {
-    await productsRepository.decrementStock(
-      item.productId,
-      item.quantity,
-      db,
-    );
-  }
+  // Run the checkout process inside an isolated database transaction
+  return await withTransaction(async (client) => {
+    const enrichedItems = [];
+    
+    // Phase 1: Verify all products and lock the records to read/hold their current stock levels
+    for (const item of sortedItems) {
+      // getProductByIdForUpdate runs a SELECT ... FOR UPDATE query within the transaction,
+      // blocking concurrent checkout threads from acquiring the same products until this transaction commits.
+      const product = await productsRepository.getProductByIdForUpdate(item.productId, client);
+      if (!product) {
+        const error = new Error(`Product ${item.productId} not found`);
+        error.status = 404;
+        throw error;
+      }
+      
+      // Since the product stock row is locked, this check represents the final, authoritative
+      // stock check. No other checkout request can change this stock value until we commit.
+      if (product.stock < item.quantity) {
+        const error = new Error(`Insufficient stock for ${product.name}`);
+        error.status = 409;
+        throw error;
+      }
+      enrichedItems.push({
+        productId: product.id,
+        quantity: item.quantity,
+        unitPrice: Number(product.price),
+      });
+    }
 
-  const order = await ordersRepository.createOrder({
-    customerId,
-    totalAmount: Number(totalAmount),
-    items: enrichedItems,
+    // Phase 2: Decrement product stocks safely within the transaction
+    for (const item of enrichedItems) {
+      await productsRepository.decrementStock(
+        item.productId,
+        item.quantity,
+        client,
+      );
+    }
+
+    // Phase 3: Create the order records referencing the active transaction
+    const order = await ordersRepository.createOrder({
+      customerId,
+      totalAmount: Number(totalAmount),
+      items: enrichedItems,
+    }, client);
+
+    return order;
   });
-
-  return order;
 }
 
 async function chargeOrder({ orderId, idempotencyKey }) {

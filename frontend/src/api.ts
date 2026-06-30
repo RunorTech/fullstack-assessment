@@ -20,13 +20,15 @@ async function request<T>(
   return data as T;
 }
 
-export function listProducts(q?: string): Promise<Product[]> {
+// Added optional init?: RequestInit parameter to support passing AbortSignal for request cancellation
+export function listProducts(q?: string, init?: RequestInit): Promise<Product[]> {
   const qs = q ? `?q=${encodeURIComponent(q)}` : "";
-  return request<Product[]>(`/products${qs}`);
+  return request<Product[]>(`/products${qs}`, init);
 }
 
-export function getProduct(id: number | string): Promise<Product> {
-  return request<Product>(`/products/${id}`);
+// Added optional init?: RequestInit parameter to support AbortSignal to prevent race conditions on fast page switching
+export function getProduct(id: number | string, init?: RequestInit): Promise<Product> {
+  return request<Product>(`/products/${id}`, init);
 }
 
 export function createOrder(body: {
@@ -40,8 +42,9 @@ export function createOrder(body: {
   });
 }
 
-export function getOrder(id: number | string): Promise<Order> {
-  return request<Order>(`/orders/${id}`);
+// Added optional init?: RequestInit parameter to allow aborting of polling status checks during unmounts
+export function getOrder(id: number | string, init?: RequestInit): Promise<Order> {
+  return request<Order>(`/orders/${id}`, init);
 }
 
 export function chargeOrder(orderId: number): Promise<{ order: Order }> {

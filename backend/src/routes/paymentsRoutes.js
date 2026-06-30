@@ -1,9 +1,11 @@
 const express = require("express");
 const ordersService = require("../services/ordersService");
+const idempotencyMiddleware = require("../middleware/idempotency");
 
 const router = express.Router();
 
-router.post("/charge", async (req, res, next) => {
+// Register idempotencyMiddleware() to prevent double credit card charges on concurrent submission retries
+router.post("/charge", idempotencyMiddleware(), async (req, res, next) => {
   try {
     const { orderId } = req.body;
     const idempotencyKey = req.header("Idempotency-Key");

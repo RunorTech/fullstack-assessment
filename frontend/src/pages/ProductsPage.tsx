@@ -8,20 +8,39 @@ export default function ProductsPage() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function load() {
-    setLoading(true);
-    try {
-      const data = await listProducts(q);
-      setProducts(data);
-    } catch (err) {
-      console.error(err);
-    }
-    setLoading(false);
-  }
-
   useEffect(() => {
+    // Flag to ignore network responses if a newer query has been dispatched
+    let active = true;
+    // AbortController to cancel stale search network requests immediately
+    const controller = new AbortController();
+
+    async function load() {
+      setLoading(true);
+      try {
+        const data = await listProducts(q, { signal: controller.signal });
+        if (active) {
+          setProducts(data);
+        }
+      } catch (err: any) {
+        // Ignore aborted search errors logged in console
+        if (err.name !== "AbortError") {
+          console.error(err);
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
     load();
-  }, []);
+
+    // Cleanup aborts pending fetch requests and flags this hook instance as inactive on dependency update or unmount
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [q]);
 
   return (
     <div className="page">
@@ -31,10 +50,7 @@ export default function ProductsPage() {
           type="text"
           value={q}
           placeholder="Search products"
-          onChange={(e) => {
-            setQ(e.target.value);
-            load();
-          }}
+          onChange={(e) => setQ(e.target.value)}
         />
       </div>
       {loading && <p>Loading...</p>}

@@ -39,6 +39,10 @@ async function getProductByIdForUpdate(productId, client) {
     SELECT id, sku, name, description, price, stock
     FROM products
     WHERE id = $1
+    /* FOR UPDATE locks this product row until the active transaction commits or rolls back,
+       preventing check-then-act concurrency race conditions where multiple requests attempt
+       to read the same stock levels before updating them. */
+    FOR UPDATE
   `;
   const { rows } = await client.query(query, [productId]);
   return rows[0] || null;

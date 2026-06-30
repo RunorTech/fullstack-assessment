@@ -10,20 +10,58 @@ export default function OrderDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    getOrder(id).then(setOrder);
+    // active flag tracks whether this specific component effect instance is active
+    let active = true;
+    // abortController holds the signal for active/pending fetches
+    let abortController = new AbortController();
 
-    setInterval(() => {
-      getOrder(id).then(setOrder);
+    const fetchOrder = async (controller: AbortController) => {
+      try {
+        const data = await getOrder(id, { signal: controller.signal });
+        if (active) {
+          setOrder(data);
+        }
+      } catch (err: any) {
+        // Ignore aborted query errors logged in console
+        if (err.name !== "AbortError") {
+          console.error(err);
+        }
+      }
+    };
+
+    // Perform initial fetch
+    fetchOrder(abortController);
+
+    // Set up status polling interval to query order updates every 2 seconds
+    const intervalId = setInterval(() => {
+      // Abort previous/pending polling request before dispatching a new one
+      abortController.abort();
+      abortController = new AbortController();
+      fetchOrder(abortController);
     }, 2000);
+
+    // CRITICAL: Return cleanup routine to clear interval and abort pending requests
+    // to prevent background memory leaks and out-of-order state updates when the component unmounts
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+      abortController.abort();
+    };
   }, [id]);
 
   if (!order) return <p>Loading order...</p>;
 
   async function pay() {
-    setPaying(true);
-    const result = await chargeOrder(order!.id);
-    setOrder(result.order);
-    setPaying(false);
+    if (paying) return;
+    setPaying(true); // Disable the button to prevent double-submitting charge requests
+    try {
+      const result = await chargeOrder(order!.id);
+      setOrder(result.order);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setPaying(false); // Enable the button again on completion/failure
+    }
   }
 
   return (
@@ -54,7 +92,7 @@ export default function OrderDetailPage() {
       </ul>
 
       {order.status === "PENDING" && (
-        <button className="primary" onClick={pay}>
+        <button className="primary" onClick={pay} disabled={paying}>
           {paying ? "Charging..." : "Pay now"}
         </button>
       )}

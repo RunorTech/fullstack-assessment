@@ -1,9 +1,11 @@
 const express = require("express");
 const ordersService = require("../services/ordersService");
+const idempotencyMiddleware = require("../middleware/idempotency");
 
 const router = express.Router();
 
-router.post("/", async (req, res, next) => {
+// Register idempotencyMiddleware() to prevent duplicate orders and stock oversells
+router.post("/", idempotencyMiddleware(), async (req, res, next) => {
   try {
     const { customerId, items, totalAmount } = req.body;
     const order = await ordersService.createOrder({
