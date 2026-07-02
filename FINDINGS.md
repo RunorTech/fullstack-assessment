@@ -27,8 +27,16 @@ This document lists the findings discovered during the security, concurrency, an
 - **Where**: `backend/src/routes/adminRoutes.js` (endpoints `POST /admin/products` and `PATCH /admin/products/:id`).
 - **Why**: The endpoints for creating and updating products were exposed without any authentication check, ignoring authorization headers.
 - **Impact**: Any unauthenticated client or attacker could create new product listings or modify inventory and pricing details.
-- **Fix**: Implemented token-based authentication and Role-Based Access Control (RBAC) in `backend/src/middleware/auth.js`. The middleware extracts and validates Bearer tokens against the environment variable tokens (`ADMIN_TOKEN`), mapping them to distinct roles (`admin`). Fine-grained permissions are checked (`products:create` for creation, `products:update` for editing) before allowing access.
-- **Trade-Offs**: Simple token-based RBAC requires secure management of environment secrets.
+- **Fix**: Implemented `authMiddleware` in `backend/src/middleware/auth.js` to extract and validate Bearer tokens. Registered this middleware on the admin router to protect all admin endpoints.
+- **Trade-Offs**: Requires client callers to correctly acquire and present authorization headers.
+
+### Issue: Lack of Role-Based Access Control (RBAC)
+
+- **Where**: `backend/src/middleware/auth.js` and `backend/src/routes/adminRoutes.js`.
+- **Why**: Even when authenticated, there was no privilege separation. Any authenticated client had unrestricted access to both creating new products and updating existing listings.
+- **Impact**: Non-administrative users or managers with limited credentials could bypass intent boundaries (e.g., creating products they are only supposed to update).
+- **Fix**: Implemented Role-Based Access Control (RBAC) in `backend/src/middleware/auth.js`. Defined roles (`admin`, `manager`) and permissions (`products:create`, `products:update`). Applied `requirePermission` guards to individual route handlers so that `manager` is restricted only to editing products.
+- **Trade-Offs**: Simple token-based RBAC requires secure management of different environment secrets (`ADMIN_TOKEN`, `MANAGER_TOKEN`).
 
 ---
 

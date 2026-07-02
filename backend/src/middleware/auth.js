@@ -25,6 +25,8 @@ function authMiddleware(req, res, next) {
 
   if (token === process.env.ADMIN_TOKEN) {
     role = "admin";
+  } else if (token === process.env.MANAGER_TOKEN) {
+    role = "manager";
   }
 
   if (!role) {
