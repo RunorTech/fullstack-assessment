@@ -15,12 +15,13 @@ async function request<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
+  const { headers, ...restInit } = init;
   const res = await fetch(`${API_URL}${path}`, {
     headers: {
       "Content-Type": "application/json",
-      ...(init.headers || {}),
+      ...(headers as Record<string, string> || {}),
     },
-    ...init,
+    ...restInit,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

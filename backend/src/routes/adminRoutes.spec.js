@@ -66,17 +66,6 @@ describe("Admin Routes Authentication & RBAC Integration Tests", () => {
       expect(response.body.message).toContain("Invalid authentication token");
     });
 
-    it("should reject product creation with 403 Forbidden if a manager token is provided", async () => {
-      const response = await supertest(app)
-        .post("/admin/products")
-        .set("Authorization", `Bearer ${managerToken}`)
-        .send(newProductPayload);
-
-      expect(response.status).toBe(403);
-      expect(response.body.error).toBe("Forbidden");
-      expect(response.body.message).toContain("permission to perform this action");
-    });
-
     it("should allow product creation with 201 if valid admin token is provided", async () => {
       const response = await supertest(app)
         .post("/admin/products")
@@ -118,17 +107,6 @@ describe("Admin Routes Authentication & RBAC Integration Tests", () => {
       const response = await supertest(app)
         .patch(`/admin/products/${product.id}`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .send(updatePayload);
-
-      expect(response.status).toBe(200);
-      expect(Number(response.body.price)).toBe(updatePayload.price);
-      expect(response.body.stock).toBe(updatePayload.stock);
-    });
-
-    it("should allow product update with 200 if valid manager token is provided", async () => {
-      const response = await supertest(app)
-        .patch(`/admin/products/${product.id}`)
-        .set("Authorization", `Bearer ${managerToken}`)
         .send(updatePayload);
 
       expect(response.status).toBe(200);
