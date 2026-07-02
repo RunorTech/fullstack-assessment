@@ -22,6 +22,14 @@ This document lists the findings discovered during the security, concurrency, an
 - **Fix**: Implemented a Redis-backed `Idempotency-Key` middleware. It uses atomic locks (`SET NX`) to prevent concurrent duplicate submissions, caches responses for 24h, and deletes the lock if a 5xx error or early connection close occurs.
 - **Trade-Offs**: Adds an infrastructure dependency on Redis and consumes memory to cache full response objects for 24 hours.
 
+### Issue: Unsecured Admin Endpoints (Authentication Bypass)
+
+- **Where**: `backend/src/routes/adminRoutes.js` (endpoints `POST /admin/products` and `PATCH /admin/products/:id`).
+- **Why**: The endpoints for creating and updating products were exposed without any authentication check, ignoring authorization headers.
+- **Impact**: Any unauthenticated client or attacker could create new product listings or modify inventory and pricing details.
+- **Fix**: Implemented token-based authentication and Role-Based Access Control (RBAC) in `backend/src/middleware/auth.js`. The middleware extracts and validates Bearer tokens against the environment variable tokens (`ADMIN_TOKEN`), mapping them to distinct roles (`admin`). Fine-grained permissions are checked (`products:create` for creation, `products:update` for editing) before allowing access.
+- **Trade-Offs**: Simple token-based RBAC requires secure management of environment secrets.
+
 ---
 
 ## Frontend
