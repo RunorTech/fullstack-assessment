@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import DOMPurify from "dompurify";
-import { createOrder, getProduct } from "../api";
+import { ApiError, createOrder, getProduct } from "../api";
 import { useCart } from "../state/CartContext";
 import type { Product } from "../types";
 
@@ -13,6 +13,7 @@ export default function ProductDetailPage() {
   const [quantity, setQuantity] = useState(1);
   // submitting state prevents multiple concurrent orders from being sent if button is clicked multiple times
   const [submitting, setSubmitting] = useState(false);
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
     if (!id) return;
@@ -50,10 +51,13 @@ export default function ProductDetailPage() {
         customerId: "customer_001",
         items: [{ productId: product.id, quantity }],
         totalAmount: parseFloat(product.price) * quantity,
-      });
+      }, idempotencyKey);
       navigate(`/orders/${order.id}`);
     } catch (err) {
       console.error(err);
+      if (err instanceof ApiError) {
+        setIdempotencyKey(crypto.randomUUID());
+      }
       setSubmitting(false); // Reset submitting state on failure to allow retry
     }
   }

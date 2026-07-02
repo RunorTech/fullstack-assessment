@@ -2,6 +2,15 @@ import type { Order, Product } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+    this.name = "ApiError";
+  }
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
@@ -15,7 +24,7 @@ async function request<T>(
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(data?.error || res.statusText);
+    throw new ApiError(data?.error || res.statusText, res.status);
   }
   return data as T;
 }
@@ -31,13 +40,21 @@ export function getProduct(id: number | string, init?: RequestInit): Promise<Pro
   return request<Product>(`/products/${id}`, init);
 }
 
-export function createOrder(body: {
-  customerId: string;
-  items: { productId: number; quantity: number }[];
-  totalAmount: number;
-}): Promise<Order> {
+export function createOrder(
+  body: {
+    customerId: string;
+    items: { productId: number; quantity: number }[];
+    totalAmount: number;
+  },
+  idempotencyKey?: string,
+): Promise<Order> {
+  const headers: Record<string, string> = {};
+  if (idempotencyKey) {
+    headers["Idempotency-Key"] = idempotencyKey;
+  }
   return request<Order>("/orders", {
     method: "POST",
+    headers,
     body: JSON.stringify(body),
   });
 }
@@ -47,9 +64,14 @@ export function getOrder(id: number | string, init?: RequestInit): Promise<Order
   return request<Order>(`/orders/${id}`, init);
 }
 
-export function chargeOrder(orderId: number): Promise<{ order: Order }> {
+export function chargeOrder(orderId: number, idempotencyKey?: string): Promise<{ order: Order }> {
+  const headers: Record<string, string> = {};
+  if (idempotencyKey) {
+    headers["Idempotency-Key"] = idempotencyKey;
+  }
   return request<{ order: Order }>(`/payments/charge`, {
     method: "POST",
+    headers,
     body: JSON.stringify({ orderId }),
   });
 }

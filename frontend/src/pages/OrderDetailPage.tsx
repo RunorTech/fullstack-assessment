@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { chargeOrder, getOrder } from "../api";
+import { ApiError, chargeOrder, getOrder } from "../api";
 import type { Order } from "../types";
 
 export default function OrderDetailPage() {
   const { id } = useParams();
   const [order, setOrder] = useState<Order | null>(null);
   const [paying, setPaying] = useState(false);
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
     if (!id) return;
@@ -55,10 +56,13 @@ export default function OrderDetailPage() {
     if (paying) return;
     setPaying(true); // Disable the button to prevent double-submitting charge requests
     try {
-      const result = await chargeOrder(order!.id);
+      const result = await chargeOrder(order!.id, idempotencyKey);
       setOrder(result.order);
     } catch (err) {
       console.error(err);
+      if (err instanceof ApiError) {
+        setIdempotencyKey(crypto.randomUUID());
+      }
     } finally {
       setPaying(false); // Enable the button again on completion/failure
     }

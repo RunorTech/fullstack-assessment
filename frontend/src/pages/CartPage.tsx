@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../state/CartContext";
-import { createOrder } from "../api";
+import { ApiError, createOrder } from "../api";
 
 export default function CartPage() {
   const { items, total, remove, clear } = useCart();
   const navigate = useNavigate();
   // submitting state prevents multiple concurrent orders from being submitted on rapid multi-clicks
   const [submitting, setSubmitting] = useState(false);
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
 
   async function checkout() {
     if (items.length === 0 || submitting) return;
@@ -20,11 +21,14 @@ export default function CartPage() {
           quantity: i.quantity,
         })),
         totalAmount: total,
-      });
+      }, idempotencyKey);
       clear();
       navigate(`/orders/${order.id}`);
     } catch (err) {
       console.error(err);
+      if (err instanceof ApiError) {
+        setIdempotencyKey(crypto.randomUUID());
+      }
       setSubmitting(false); // Enable the button again on checkout failure to allow retry
     }
   }
